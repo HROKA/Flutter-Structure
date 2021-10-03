@@ -13,11 +13,11 @@ const readShellInput = readline.createInterface({
   output: process.stdout,
 });
 
-const { NAME, SCREENS, COLORS, ROUTES } = {
+const { NAME, SCREENS, COLORS, API_ROUTES } = {
   NAME: "name",
   SCREENS: "screens",
   COLORS: "colors",
-  ROUTES: "routes",
+  API_ROUTES: "apiroutes",
 };
 
 // selected file name
@@ -25,6 +25,165 @@ let filePath;
 
 // json file value
 let fileValue = {};
+
+let flutterProjectName = "";
+
+let projectDirectory = "";
+
+const currentDirectory = process.cwd();
+
+const vsCodeSettings = `{
+    "dart.previewLsp": true,
+    "launch": {
+           "configurations": [],
+           "compounds": []
+    },
+    "editor.codeActionsOnSave": {
+           "source.fixAll": true,
+           "source.organizeImports": true,
+    },
+    "debug.openDebug": "openOnDebugBreak",
+    "[dart]": {
+           // Automatically format code on save and during typing of certain characters
+           // (like ';' and '}').
+           "editor.formatOnSave": true,
+           "editor.formatOnType": true,
+           // Draw a guide line at 80 characters, where Dart's formatting will wrap code.
+           "editor.rulers": [
+                  80
+           ],
+    }
+}`;
+
+const apiRequestFileContent = `import 'dart:developer' as developer;
+
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+
+import './index.dart';
+
+class ApiRequest {
+  String path, methoud;
+  var body, response;
+  bool withLoading, withErrorMessage;
+
+  final AppLanguageController _appLanguageController =
+      Get.find<AppLanguageController>();
+  final MyAppController _myAppController = Get.find<MyAppController>();
+
+  ApiRequest({
+    @required this.path,
+    this.body,
+    this.methoud,
+    this.withLoading = true,
+    this.withErrorMessage = true,
+  });
+
+  Dio _dio() {
+    // Put your authorization token here
+    return Dio(
+      BaseOptions(
+        headers: {
+          'Authorization': _myAppController.userData != null
+              ? 'Bearer ' + _myAppController.userData['token'].toString()
+              : '',
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Accept-Language': _appLanguageController.appLocale,
+          'platform': 'mobile',
+        },
+      ),
+    );
+  }
+
+  void request({
+    Function() beforeSend,
+    Function(dynamic data, dynamic response) onSuccess,
+    Function(dynamic error) onError,
+  }) async {
+    // start request time
+    DateTime startTime = DateTime.now();
+
+    try {
+      // show  request detils in debug console
+      showRequestDetails(
+        methoud: methoud,
+        path: path,
+        body: body.toString(),
+      );
+      // strat spinnet loading
+      if (withLoading) startLoading();
+      // check methoud type
+      switch (methoud) {
+        case GET_METHOUD:
+          response = await _dio()
+              .get(BASE_URL + this.path, queryParameters: body);
+
+          break;
+        case POST_METHOUD:
+          response = await _dio().post(BASE_URL + this.path, data: body);
+          break;
+        case PUT_METHOUD:
+          response = await _dio().put(BASE_URL + this.path, data: body);
+          break;
+        case DELETE_METHOUD:
+          response = await _dio().delete(BASE_URL + this.path, data: body);
+          break;
+      }
+      // request time
+      var time = DateTime.now().difference(startTime).inMilliseconds;
+      // print response data in console
+      printSuccessesResponse(response: response.data, time: time);
+      if (withLoading) dismissLoading();
+      if (onSuccess != null) {
+        onSuccess(response.data['data'], response.data);
+      }
+    } catch (error) {
+      // request time
+      var time = DateTime.now().difference(startTime).inMilliseconds;
+      var errorResponse;
+      if (error is DioError) {
+        errorResponse = error.response;
+        // In case we get a null response for unknown reason
+        var errorData = errorResponse != null
+            ? errorResponse.data
+            : {
+                "errors": [
+                  {"message": "Un handeled Error"}
+                ]
+              };
+        //handle DioError here by error type or by error code
+        if (withErrorMessage) {
+          showMessage(
+            description:
+                errorData["errors"] != null && errorData["errors"].length > 0
+                    ? errorData["errors"][0]["message"]
+                    : errorData["message"],
+            textColor: RED_COLOR,
+          );
+        }
+        // print response error
+        printRequestError(error: errorData, time: time);
+
+        if (onError != null) {
+          onError(errorData);
+        }
+      } else {
+        // handle another errors
+        developer.log('\x1B[31m **** Request catch another error ****');
+        developer.log('\x1B[33m Error>> $error');
+        developer.log('\x1B[31m ***************************');
+      }
+      if (withLoading) dismissLoading();
+    }
+  }
+}
+`;
+
+const apiManagerIndex = `export './ApiRequest.dart';
+export './UrlRoutes.dart';
+export '../utils/index.dart';
+`;
 
 const askUserToEnterFileName = (askMessage) => {
   // ask user to enter file directory
@@ -84,7 +243,7 @@ const completeReadJsonFile = () => {
       });
       createFlutterProject();
     } catch (e) {
-        console.log(e);
+      console.log(e);
       handelErrorFileType();
     }
   });
@@ -102,20 +261,109 @@ const handelErrorFileType = () => {
 };
 
 const createFlutterProject = () => {
+  flutterProjectName = fileValue[NAME];
   console.log("\033[32m \nStart Create Flutter Project....");
   // create flutter project
-  exec(`flutter create ${fileValue[NAME]}`, (error, stdout, stderr) => {
+  exec(`flutter create ${flutterProjectName}`, (error, stdout) => {
     if (error) {
-      console.error(`exec error: ${error}`);
+      console.error(`error: ${error}`);
       return;
     }
     console.log(stdout);
     console.log("\033[35m Flutter Project Created Success $_$ \033[34m ");
-    // create flutter pubspec.yaml
+    createVsCodeSettings();
   });
 };
-askUserToEnterFileName();
 
+const createVsCodeSettings = () => {
+  projectDirectory = `${currentDirectory}/${flutterProjectName}`;
+  exec(
+    `cd ./${flutterProjectName} &&  mkdir .vscode && touch .vscode/settings.json`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+      fs.appendFile(
+        `${projectDirectory}/.vscode/settings.json`,
+        vsCodeSettings,
+        (err) => {
+          if (err) {
+            console.log(err);
+          } else {
+            console.log(
+              "\n \033[35m VsCode Settings Added Successful $_$ \033[34m "
+            );
+            createAppFolders();
+          }
+        }
+      );
+    }
+  );
+};
+
+const createAppFolders = () => {
+  console.log("\033[35m \n Assets folders added Successful.... \033[34m ");
+  exec(
+    `cd ${projectDirectory} && mkdir assets && cd assets && mkdir icons && mkdir images && mkdir fonts && mkdir videos && mkdir audios`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+    }
+  );
+  console.log("\n \033[35m lib folders added Successful \033[34m ");
+  exec(
+    `cd ${projectDirectory}/lib && mkdir api_manger && mkdir components && mkdir screens && mkdir styles && mkdir utils && mkdir language && touch .env.dart`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+    }
+  );
+  createApiManger();
+};
+
+const createApiManger = () => {
+  console.log("\n \033[35m ApiManger files added Successful \033[34m ");
+  exec(
+    `cd ${projectDirectory}/lib/api_manger && touch ApiRequest.dart && touch index.dart && touch UrlRoutes.dart`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+      fs.appendFile(
+        `${projectDirectory}/lib/api_manger/ApiRequest.dart`,
+        apiRequestFileContent,
+        (err) => {
+          if (err) console.log(err);
+        }
+      );
+
+      fs.appendFile(
+        `${projectDirectory}/lib/api_manger/index.dart`,
+        apiManagerIndex,
+        (err) => {
+          if (err) console.log(err);
+        }
+      );
+
+      var logger = fs.createWriteStream(
+        `${projectDirectory}/lib/api_manger/UrlRoutes.dart`,
+        {
+          flags: "a", // 'a' means appending (old data will be preserved)
+        }
+      );
+
+      logger.write(`import './index.dart'; \n`);
+
+      logger.write('\n');
+      fileValue[API_ROUTES].map((value) => {
+          let urlName = value.charAt(0) === "/" ? value.replace("/","") : value;
+          urlName = urlName.charAt(urlName.length - 1) === "/" ? urlName.replace(/\//,""): urlName;
+        urlName = urlName.toUpperCase().replace(/\//g,"_");
+          logger.write(
+            `const ${urlName} = '${value}';\n`
+          );
+      });
+      logger.end();
+      console.log("\n \033[35m Api Manager Added Successful $_$ \033[34m ");
+    }
+  );
+};
+
+askUserToEnterFileName();
 
 // # Text Colors
 // # Black        0;30     Dark Gray     1;30
