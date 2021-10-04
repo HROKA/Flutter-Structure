@@ -35,6 +35,7 @@ const packagesToInstall = [
   "flutter pub add common_ui_toolkit",
 ];
 
+
 const currentDirectory = process.cwd();
 
 const vsCodeSettings = `{
@@ -502,7 +503,7 @@ const creatUtilsFiles = () => {
 const createStyles = () => {
 
   exec(
-    `cd ${projectDirectory}/lib/utils && touch index.dart`,
+    `cd ${projectDirectory}/lib/styles && touch index.dart && touch ButtonStyles.dart && touch ContainersStyle.dart && touch TextInputStyles.dart && touch TextStyles.dart`,
     (error, stdout) => {
       if (error) console.error(`error: ${error}`);
     }
