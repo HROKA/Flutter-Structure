@@ -30,6 +30,11 @@ let flutterProjectName = "";
 
 let projectDirectory = "";
 
+const packagesToInstall = [
+  "flutter pub add get",
+  "flutter pub add common_ui_toolkit",
+];
+
 const currentDirectory = process.cwd();
 
 const vsCodeSettings = `{
@@ -183,6 +188,62 @@ class ApiRequest {
 const apiManagerIndex = `export './ApiRequest.dart';
 export './UrlRoutes.dart';
 export '../utils/index.dart';
+`;
+
+const screenIndexContent = (controller, screen) => `export './${screen}';
+export './${controller}';
+`;
+
+const screenControllerContent = (controllerName) => `import '../index.dart';
+
+class ${controllerName} extends GetxController {
+  @override
+  void onInit() {
+    super.onInit();
+  }
+
+  @override
+  void onReady() {
+    super.onReady();
+  }
+
+  @override
+  void onClose() {
+    super.onClose();
+  }
+}`;
+
+const screenContent = (
+  controllerName,
+  screenName
+) => `import 'package:common_ui_toolkit/index.dart';
+
+import '../index.dart';
+class ${screenName} extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return ContainerScreen(
+      header: Header(
+        title: 'Edit Profile',
+        backColor: WHITE_COLOR,
+      ),
+      child: GetBuilder<${controllerName}>(
+        init: ${controllerName}(),
+        builder: (controller) => SingleChildScrollView(
+          child: CommonContainer(
+            style: CommonContainerModel(
+              width: DEVICE_WIDTH,
+              minHieght: DEVICE_HEIGHT,
+            ),
+            child: Column(
+              children: [],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 `;
 
 const askUserToEnterFileName = (askMessage) => {
@@ -348,19 +409,115 @@ const createApiManger = () => {
 
       logger.write(`import './index.dart'; \n`);
 
-      logger.write('\n');
+      logger.write("\n");
       fileValue[API_ROUTES].map((value) => {
-          let urlName = value.charAt(0) === "/" ? value.replace("/","") : value;
-          urlName = urlName.charAt(urlName.length - 1) === "/" ? urlName.replace(/\//,""): urlName;
-        urlName = urlName.toUpperCase().replace(/\//g,"_");
-          logger.write(
-            `const ${urlName} = '${value}';\n`
-          );
+        let urlName = value.charAt(0) === "/" ? value.replace("/", "") : value;
+        urlName =
+          urlName.charAt(urlName.length - 1) === "/"
+            ? urlName.replace(/\//, "")
+            : urlName;
+        urlName = urlName.toUpperCase().replace(/\//g, "_");
+        logger.write(`const ${urlName} = '${value}';\n`);
       });
       logger.end();
       console.log("\n \033[35m Api Manager Added Successful $_$ \033[34m ");
+
+      createScreens();
     }
   );
+};
+
+const createScreens = () => {
+  exec(
+    `cd ${projectDirectory}/lib/screens && touch index.dart`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+    }
+  );
+  var logger = fs.createWriteStream(
+    `${projectDirectory}/lib/screens/index.dart`,
+    {
+      flags: "a", // 'a' means appending (old data will be preserved)
+    }
+  );
+
+  logger.write(`export 'package:get/get.dart';\n\n`);
+  logger.write(`export '../utils/index.dart';\n`);
+
+  fileValue[SCREENS].map((value, index) => {
+    const upperCaseScreenName = value.charAt(0).toUpperCase() + value.slice(1);
+    exec(
+      `cd ${projectDirectory}/lib/screens && mkdir ${value} && cd ${value} && touch ${upperCaseScreenName}.dart && touch ${upperCaseScreenName}Controller.dart && touch index.dart`,
+      (error, stdout) => {
+        if (error) console.error(`error: ${error}`);
+        logger.write(`export './${value}/index.dart';\n`);
+
+        fs.appendFile(
+          `${projectDirectory}/lib/screens/${value}/index.dart`,
+          screenIndexContent(
+            `${upperCaseScreenName}Controller.dart`,
+            `${upperCaseScreenName}.dart`
+          ),
+          (err) => {
+            if (error) console.log(err);
+          }
+        );
+        fs.appendFile(
+          `${projectDirectory}/lib/screens/${value}/${upperCaseScreenName}Controller.dart`,
+          screenControllerContent(`${upperCaseScreenName}Controller`),
+          (err) => {
+            if (error) console.log(err);
+          }
+        );
+
+        fs.appendFile(
+          `${projectDirectory}/lib/screens/${value}/${upperCaseScreenName}.dart`,
+          screenContent(
+            `${upperCaseScreenName}Controller`,
+            upperCaseScreenName
+          ),
+          (err) => {
+            if (error) console.log(err);
+          }
+        );
+      }
+    );
+  });
+
+  console.log("\n \033[35m Screens Added Successful $_$ \033[34m ");
+  creatUtilsFiles();
+};
+
+const creatUtilsFiles = () => {
+
+  exec(
+    `cd ${projectDirectory}/lib/utils && touch index.dart`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+    }
+  );
+  createStyles();
+};
+
+const createStyles = () => {
+
+  exec(
+    `cd ${projectDirectory}/lib/utils && touch index.dart`,
+    (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+    }
+  );
+
+  setTimeout(installPackages, 1000);
+};
+const installPackages = () => {
+  packagesToInstall.map((command) => {
+    exec(`cd ${projectDirectory} && ${command}`, (error, stdout) => {
+      if (error) console.error(`error: ${error}`);
+      console.log(stdout);
+    });
+  });
+  console.log("\n \033[35m Installed Packages done Successful $_$ \033[34m ");
 };
 
 askUserToEnterFileName();
